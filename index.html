@@ -53,6 +53,7 @@
   }
   .total-box .num { font-size: 38px; font-weight: 700; color: var(--accent); }
   .total-box .lbl { font-size: 13px; color: var(--muted); }
+  .total-box .verdict { font-size: 14px; font-weight: 600; margin-top: 6px; color: var(--text); }
   .err { color: #b3261e; font-size: 13px; margin-top: 12px; display: none; }
   .status { font-size: 13px; color: var(--muted); margin-top: 12px; }
   .banner {
@@ -66,7 +67,7 @@
 <div class="wrap">
   <div class="banner" id="banner"></div>
   <h1>语音模仿相似度比对</h1>
-  <div class="sub">上传一段原音频，然后对着麦克风模仿它，看看你模仿得有多像。</div>
+  <div class="sub">上传一段原音频，然后对着麦克风模仿它，看看你模仿得有多像。综合相似度由预训练声纹嵌入模型(resemblyzer)给出，对音色和语调都敏感。</div>
 
   <!-- 原音频 -->
   <div class="card">
@@ -105,20 +106,21 @@
   <div class="card result" id="resultCard">
     <h2>比对结果</h2>
     <div class="bar-row">
-      <div class="bar-label"><span>音色相似度</span><b id="mfccVal">0%</b></div>
+      <div class="bar-label"><span>音色相似度（参考）</span><b id="mfccVal">—</b></div>
       <div class="bar-track"><div class="bar-fill" id="mfccBar"></div></div>
     </div>
     <div class="bar-row">
-      <div class="bar-label"><span>音高 / 语调相似度</span><b id="pitchVal">0%</b></div>
+      <div class="bar-label"><span>音高 / 语调相似度（参考）</span><b id="pitchVal">—</b></div>
       <div class="bar-track"><div class="bar-fill" id="pitchBar"></div></div>
     </div>
     <div class="bar-row">
-      <div class="bar-label"><span>能量 / 节奏相似度</span><b id="energyVal">0%</b></div>
+      <div class="bar-label"><span>能量 / 节奏相似度（参考）</span><b id="energyVal">—</b></div>
       <div class="bar-track"><div class="bar-fill" id="energyBar"></div></div>
     </div>
     <div class="total-box">
       <div class="num" id="totalNum">0%</div>
-      <div class="lbl">综合相似度</div>
+      <div class="lbl">声纹相似度（综合）</div>
+      <div class="verdict" id="verdict"></div>
     </div>
   </div>
 </div>
@@ -299,15 +301,27 @@ cmpBtn.addEventListener('click', async () => {
 });
 
 function showResult(d) {
-  const pct = v => Math.round(v * 100) + '%';
+  const ok = v => (v != null && !isNaN(v));
+  const pct = v => ok(v) ? Math.round(v * 100) + '%' : '—';
   const set = (barId, valId, v) => {
-    document.getElementById(barId).style.width = Math.round(v * 100) + '%';
+    const p = ok(v) ? Math.round(v * 100) : 0;
+    document.getElementById(barId).style.width = p + '%';
     document.getElementById(valId).textContent = pct(v);
   };
-  set('mfccBar', 'mfccVal', d.mfcc_similarity);
-  set('pitchBar', 'pitchVal', d.pitch_similarity);
-  set('energyBar', 'energyVal', d.energy_similarity);
+  set('mfccBar', 'mfccVal', d.mfcc);
+  set('pitchBar', 'pitchVal', d.pitch);
+  set('energyBar', 'energyVal', d.energy);
   document.getElementById('totalNum').textContent = pct(d.total);
+  const t = d.total;
+  let verdict = '';
+  if (ok(t)) {
+    if (t >= 0.85) verdict = '几乎一模一样 🎯';
+    else if (t >= 0.70) verdict = '非常像 👍';
+    else if (t >= 0.50) verdict = '比较像 🙂';
+    else if (t >= 0.30) verdict = '有点像 🤔';
+    else verdict = '不太像 😅';
+  }
+  document.getElementById('verdict').textContent = verdict;
   resultCard.style.display = 'block';
 }
 </script>

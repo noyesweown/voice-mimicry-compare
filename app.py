@@ -1,64 +1,68 @@
 """
-app.py —— 语音模仿相似度比对 · 网页版后端
-Flask 提供静态页面 + /compare 接口：
-  前端把"原音频"和"模仿录音"都转成 WAV 上传，
-  后端直接交给 voice_compare.compare 计算相似度并返回 JSON。
+语音模仿相似度比对 —— Web 后端 (Flask)
+主分数用预训练声纹嵌入模型(resemblyzer)计算两段音频的"声音相似度"；
+同时用 v2 整句级启发式给出 音色/语调/能量 分项作为补充参考。
 
-运行：
-  /Users/zichen/.workbuddy/binaries/python/envs/voicecmp/bin/python app.py
-然后浏览器打开 http://localhost:5000
+运行:
+    python app.py
+浏览器打开 http://localhost:5001
+
+部署: 适配 HuggingFace Spaces / Render (读 $PORT)，见 README。
 """
-
 import os
-import uuid
-from flask import Flask, request, jsonify, Response
-import voice_compare
+import tempfile
+from flask import Flask, request, jsonify, send_from_directory
+import numpy as np
+import soundfile as sf
 
-app = Flask(__name__)
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-UPLOAD_DIR = "/tmp/voicecmp_uploads"
-os.makedirs(UPLOAD_DIR, exist_ok=True)
+import voice_embed as ve
+import voice_compare_v2 as v2
+
+app = Flask(__name__, static_folder=".", template_folder=".")
+PORT = int(os.environ.get("PORT", 5001))
+
+
+def save_upload(f):
+    """把上传的文件存成临时 wav 并返回路径。"""
+    suffix = ".wav"
+    fd, path = tempfile.mkstemp(suffix=suffix)
+    os.close(fd)
+    f.save(path)
+    return path
 
 
 @app.route("/")
 def index():
-    with open(os.path.join(BASE_DIR, "index.html"), "r", encoding="utf-8") as f:
-        return Response(f.read(), mimetype="text/html")
+    return send_from_directory(".", "index.html")
 
 
 @app.route("/ping")
 def ping():
-    """前端自检用：能返回说明后端在运行。"""
-    return jsonify({"ok": True})
+    return jsonify(ok=True)
 
 
 @app.route("/compare", methods=["POST"])
 def compare():
-    original = request.files.get("original")
-    mimic = request.files.get("mimic")
-    if not original or not mimic:
-        return jsonify({"error": "缺少音频文件，请同时上传原音频和模仿录音"}), 400
-
-    opath = os.path.join(UPLOAD_DIR, uuid.uuid4().hex + ".wav")
-    mpath = os.path.join(UPLOAD_DIR, uuid.uuid4().hex + ".wav")
-    original.save(opath)
-    mimic.save(mpath)
-
     try:
-        result = voice_compare.compare(opath, mpath)
-    except Exception as e:  # 算法或解码出错时返回可读错误
-        return jsonify({"error": f"比对失败：{e}"}), 500
-    finally:
-        for p in (opath, mpath):
-            try:
-                os.remove(p)
-            except OSError:
-                pass
-
-    return jsonify(result)
+        o = request.files["original"]
+        m = request.files["mimic"]
+        op = save_upload(o)
+        mp = save_upload(m)
+        y1 = ve.load_audio(op)
+        y2 = ve.load_audio(mp)
+        # 主分数: 声纹嵌入余弦相似度
+        total = ve.similarity(y1, y2)
+        # 分项: v2 整句级启发式(仅供參考)
+        comp = v2.compare(y1, y2)
+        return jsonify({
+            "total": total,
+            "mfcc": comp["mfcc"],
+            "pitch": comp["pitch"],
+            "energy": comp["energy"],
+        })
+    except Exception as e:
+        return jsonify(error=str(e)), 500
 
 
 if __name__ == "__main__":
-    # 本地默认 5001；部署到 Hugging Face Spaces / Render 时读环境变量 PORT
-    port = int(os.environ.get("PORT", 5001))
-    app.run(host="0.0.0.0", port=port, debug=False)
+    app.run(host="0.0.0.0", port=PORT, debug=True)

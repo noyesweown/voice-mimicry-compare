@@ -1,0 +1,315 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>语音模仿相似度比对</title>
+<style>
+  :root {
+    --bg: #ffffff; --surface: #f6f7f9; --border: #e3e5e8;
+    --text: #1c1d1f; --muted: #6b6f76; --accent: #3457d5; --accent-soft: #e8ecfb;
+    --good: #1d9e75; --warn: #ba7517;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+    background: var(--surface); color: var(--text); line-height: 1.6;
+  }
+  .wrap { max-width: 720px; margin: 0 auto; padding: 32px 20px 60px; }
+  h1 { font-size: 22px; font-weight: 600; margin: 0 0 4px; }
+  .sub { color: var(--muted); font-size: 14px; margin-bottom: 28px; }
+  .card {
+    background: var(--bg); border: 1px solid var(--border); border-radius: 12px;
+    padding: 20px; margin-bottom: 18px;
+  }
+  .card h2 { font-size: 15px; font-weight: 600; margin: 0 0 14px; }
+  .row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+  button {
+    font: inherit; cursor: pointer; border-radius: 8px; padding: 9px 16px;
+    border: 1px solid var(--border); background: var(--bg); color: var(--text);
+    transition: .15s;
+  }
+  button:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+  button.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+  button.primary:hover:not(:disabled) { background: #2a47b0; color: #fff; }
+  button.danger { background: #fdecec; border-color: #f0b9b9; color: #b3261e; }
+  button:disabled { opacity: .5; cursor: not-allowed; }
+  .file-name { color: var(--muted); font-size: 13px; }
+  audio { width: 100%; margin-top: 10px; display: none; }
+  .rec-dot { width: 10px; height: 10px; border-radius: 50%; background: #e24b4a; display: none; }
+  .rec-dot.on { display: inline-block; animation: blink 1s infinite; }
+  @keyframes blink { 50% { opacity: .25; } }
+  .timer { font-variant-numeric: tabular-nums; color: var(--muted); font-size: 13px; }
+  .hint { color: var(--muted); font-size: 12.5px; margin-top: 10px; }
+  .result { display: none; }
+  .bar-row { margin: 14px 0; }
+  .bar-label { display: flex; justify-content: space-between; font-size: 13px; margin-bottom: 6px; }
+  .bar-label b { font-weight: 600; }
+  .bar-track { height: 10px; background: var(--surface); border-radius: 6px; overflow: hidden; border: 1px solid var(--border); }
+  .bar-fill { height: 100%; width: 0; background: var(--accent); border-radius: 6px; transition: width .6s ease; }
+  .total-box {
+    margin-top: 22px; padding: 18px; border-radius: 12px; background: var(--accent-soft);
+    text-align: center;
+  }
+  .total-box .num { font-size: 38px; font-weight: 700; color: var(--accent); }
+  .total-box .lbl { font-size: 13px; color: var(--muted); }
+  .err { color: #b3261e; font-size: 13px; margin-top: 12px; display: none; }
+  .status { font-size: 13px; color: var(--muted); margin-top: 12px; }
+  .banner {
+    display: none; margin-bottom: 20px; padding: 12px 16px; border-radius: 10px;
+    background: #fdf6e7; border: 1px solid #efd9a7; color: #7a5a10; font-size: 13px;
+  }
+  .banner code { background: #f7ecd2; padding: 1px 6px; border-radius: 4px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="banner" id="banner"></div>
+  <h1>语音模仿相似度比对</h1>
+  <div class="sub">上传一段原音频，然后对着麦克风模仿它，看看你模仿得有多像。</div>
+
+  <!-- 原音频 -->
+  <div class="card">
+    <h2>1 · 原音频</h2>
+    <div class="row">
+      <input type="file" id="origFile" accept="audio/*">
+      <span class="file-name" id="origName">未选择文件</span>
+    </div>
+    <audio id="origAudio" controls></audio>
+    <div class="hint">支持 wav / mp3，程序会自动转成统一格式处理。</div>
+  </div>
+
+  <!-- 模仿录音 -->
+  <div class="card">
+    <h2>2 · 模仿录音</h2>
+    <div class="row">
+      <button id="recBtn">● 开始录音</button>
+      <span class="rec-dot" id="recDot"></span>
+      <span class="timer" id="recTimer"></span>
+    </div>
+    <audio id="mimicAudio" controls></audio>
+    <div class="hint">点击开始，对着麦克风模仿上面的原音频；再点一次停止。</div>
+  </div>
+
+  <!-- 比对 -->
+  <div class="card">
+    <h2>3 · 比对</h2>
+    <div class="row">
+      <button class="primary" id="cmpBtn" disabled>开始比对</button>
+    </div>
+    <div class="status" id="status"></div>
+    <div class="err" id="err"></div>
+  </div>
+
+  <!-- 结果 -->
+  <div class="card result" id="resultCard">
+    <h2>比对结果</h2>
+    <div class="bar-row">
+      <div class="bar-label"><span>音色相似度</span><b id="mfccVal">0%</b></div>
+      <div class="bar-track"><div class="bar-fill" id="mfccBar"></div></div>
+    </div>
+    <div class="bar-row">
+      <div class="bar-label"><span>音高 / 语调相似度</span><b id="pitchVal">0%</b></div>
+      <div class="bar-track"><div class="bar-fill" id="pitchBar"></div></div>
+    </div>
+    <div class="bar-row">
+      <div class="bar-label"><span>能量 / 节奏相似度</span><b id="energyVal">0%</b></div>
+      <div class="bar-track"><div class="bar-fill" id="energyBar"></div></div>
+    </div>
+    <div class="total-box">
+      <div class="num" id="totalNum">0%</div>
+      <div class="lbl">综合相似度</div>
+    </div>
+  </div>
+</div>
+
+<script>
+let originalWav = null;   // 转好的 WAV Blob
+let mimicWav = null;
+
+// ---- 页面加载时自检后端是否可达 ----
+const banner = document.getElementById('banner');
+async function checkServer() {
+  if (location.protocol === 'file:') {
+    banner.innerHTML = '⚠️ 你是<b>直接打开本地文件</b>（file://）看这个页面的，这样无法调用后端算法。请先启动服务：<br><code>cd 项目目录 && pip install -r requirements.txt && python app.py</code><br>然后浏览器访问 <code>http://localhost:5001</code>';
+    banner.style.display = 'block';
+    return;
+  }
+  try {
+    const r = await fetch('/ping');
+    if (!r.ok) throw new Error();
+  } catch (e) {
+    banner.innerHTML = '⚠️ <b>后端服务未运行</b>，比对功能不可用。请先在项目目录启动：<br><code>pip install -r requirements.txt && python app.py</code><br>然后访问 <code>http://localhost:5001</code>';
+    banner.style.display = 'block';
+  }
+}
+checkServer();
+
+// ---- 工具：AudioBuffer -> 16-bit PCM WAV Blob ----
+function audioBufferToWav(buffer) {
+  const numCh = buffer.numberOfChannels;
+  const sr = buffer.sampleRate;
+  const frames = buffer.length;
+  const bytesPerSample = 2;
+  const blockAlign = numCh * bytesPerSample;
+  const dataSize = frames * blockAlign;
+  const ab = new ArrayBuffer(44 + dataSize);
+  const view = new DataView(ab);
+  const writeStr = (off, s) => { for (let i = 0; i < s.length; i++) view.setUint8(off + i, s.charCodeAt(i)); };
+  writeStr(0, 'RIFF'); view.setUint32(4, 36 + dataSize, true); writeStr(8, 'WAVE');
+  writeStr(12, 'fmt '); view.setUint32(16, 16, true); view.setUint16(20, 1, true);
+  view.setUint16(22, numCh, true); view.setUint32(24, sr, true);
+  view.setUint32(28, sr * blockAlign, true); view.setUint16(32, blockAlign, true);
+  view.setUint16(34, 16, true);
+  writeStr(36, 'data'); view.setUint32(40, dataSize, true);
+  let off = 44;
+  const chans = [];
+  for (let c = 0; c < numCh; c++) chans.push(buffer.getChannelData(c));
+  for (let i = 0; i < frames; i++) {
+    for (let c = 0; c < numCh; c++) {
+      let s = Math.max(-1, Math.min(1, chans[c][i]));
+      view.setInt16(off, s < 0 ? s * 0x8000 : s * 0x7FFF, true);
+      off += 2;
+    }
+  }
+  return new Blob([ab], { type: 'audio/wav' });
+}
+
+// 把任意音频 Blob/File 解码并重编码为单声道 WAV
+async function toWav(fileOrBlob) {
+  const arrayBuf = await fileOrBlob.arrayBuffer();
+  const Ctx = window.AudioContext || window.webkitAudioContext;
+  const ctx = new Ctx();
+  const audioBuf = await ctx.decodeAudioData(arrayBuf);
+  // 若多声道则下混为单声道
+  let mono;
+  if (audioBuf.numberOfChannels === 1) {
+    mono = audioBuf;
+  } else {
+    mono = ctx.createBuffer(1, audioBuf.length, audioBuf.sampleRate);
+    const dst = mono.getChannelData(0);
+    for (let c = 0; c < audioBuf.numberOfChannels; c++) {
+      const src = audioBuf.getChannelData(c);
+      for (let i = 0; i < audioBuf.length; i++) dst[i] += src[i] / audioBuf.numberOfChannels;
+    }
+  }
+  ctx.close();
+  return audioBufferToWav(mono);
+}
+
+// ---- 原音频选择 ----
+const origFile = document.getElementById('origFile');
+const origAudio = document.getElementById('origAudio');
+const origName = document.getElementById('origName');
+origFile.addEventListener('change', async () => {
+  const f = origFile.files[0];
+  if (!f) return;
+  origName.textContent = f.name;
+  try {
+    originalWav = await toWav(f);
+    origAudio.src = URL.createObjectURL(originalWav);
+    origAudio.style.display = 'block';
+  } catch (e) {
+    alert('原音频解码失败：' + e.message);
+    originalWav = null;
+  }
+  refreshCmpBtn();
+});
+
+// ---- 录音 ----
+const recBtn = document.getElementById('recBtn');
+const recDot = document.getElementById('recDot');
+const recTimer = document.getElementById('recTimer');
+const mimicAudio = document.getElementById('mimicAudio');
+let mediaRecorder = null, chunks = [], recStream = null, recInt = null, recStart = 0;
+
+recBtn.addEventListener('click', async () => {
+  if (mediaRecorder && mediaRecorder.state === 'recording') {
+    mediaRecorder.stop();
+    return;
+  }
+  try {
+    recStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  } catch (e) {
+    alert('无法访问麦克风：' + e.message + '（请确认浏览器已授权）');
+    return;
+  }
+  chunks = [];
+  mediaRecorder = new MediaRecorder(recStream);
+  mediaRecorder.ondataavailable = e => { if (e.data.size) chunks.push(e.data); };
+  mediaRecorder.onstop = async () => {
+    recDot.classList.remove('on');
+    clearInterval(recInt);
+    recTimer.textContent = '';
+    recStream.getTracks().forEach(t => t.stop());
+    const blob = new Blob(chunks, { type: mediaRecorder.mimeType });
+    try {
+      mimicWav = await toWav(blob);
+      mimicAudio.src = URL.createObjectURL(mimicWav);
+      mimicAudio.style.display = 'block';
+    } catch (e) {
+      alert('录音解码失败：' + e.message);
+      mimicWav = null;
+    }
+    recBtn.textContent = '● 开始录音';
+    refreshCmpBtn();
+  };
+  mediaRecorder.start();
+  recBtn.textContent = '■ 停止录音';
+  recDot.classList.add('on');
+  recStart = Date.now();
+  recInt = setInterval(() => {
+    const s = Math.floor((Date.now() - recStart) / 1000);
+    recTimer.textContent = `录音中 ${s}s`;
+  }, 200);
+});
+
+// ---- 比对 ----
+const cmpBtn = document.getElementById('cmpBtn');
+const statusEl = document.getElementById('status');
+const errEl = document.getElementById('err');
+const resultCard = document.getElementById('resultCard');
+
+function refreshCmpBtn() {
+  cmpBtn.disabled = !(originalWav && mimicWav);
+}
+
+cmpBtn.addEventListener('click', async () => {
+  errEl.style.display = 'none';
+  resultCard.style.display = 'none';
+  statusEl.textContent = '比对中…';
+  const fd = new FormData();
+  fd.append('original', originalWav, 'original.wav');
+  fd.append('mimic', mimicWav, 'mimic.wav');
+  try {
+    const resp = await fetch('/compare', { method: 'POST', body: fd });
+    const data = await resp.json();
+    if (!resp.ok) throw new Error(data.error || '服务器错误');
+    showResult(data);
+    statusEl.textContent = '';
+  } catch (e) {
+    statusEl.textContent = '';
+    if (e instanceof TypeError) {
+      errEl.textContent = '出错了：无法连接后端服务。请确认已运行 app.py，并通过 http://localhost:5001 打开本页面。';
+    } else {
+      errEl.textContent = '出错了：' + e.message;
+    }
+    errEl.style.display = 'block';
+  }
+});
+
+function showResult(d) {
+  const pct = v => Math.round(v * 100) + '%';
+  const set = (barId, valId, v) => {
+    document.getElementById(barId).style.width = Math.round(v * 100) + '%';
+    document.getElementById(valId).textContent = pct(v);
+  };
+  set('mfccBar', 'mfccVal', d.mfcc_similarity);
+  set('pitchBar', 'pitchVal', d.pitch_similarity);
+  set('energyBar', 'energyVal', d.energy_similarity);
+  document.getElementById('totalNum').textContent = pct(d.total);
+  resultCard.style.display = 'block';
+}
+</script>
+</body>
+</html>

@@ -20,9 +20,19 @@ python app.py
 
 > 注意：必须用 `http://localhost:5001` 打开页面，不要直接双击 index.html（否则前端连不上后端）。
 
-## 给同事/他人使用
-- **GitHub 共享代码**：对方 clone 后按上面步骤本地运行。
-- **零安装给远程同事用**：用内网穿透（如 `ngrok http 5001`）把你的本地服务暴露成公网链接发给他；或部署到免费托管（Render / Hugging Face Spaces）拿到固定网址。
+## 部署到免费托管（让远程同事点链接即用）
+### Hugging Face Spaces（推荐，免费、固定网址）
+1. 登录 huggingface.co → New Space → 选 **Docker** SDK，可见性选 Public（或 Private）。
+2. 把本仓库内容（含 `Dockerfile`）推到 Space 的 git 仓库，或直接连 GitHub 仓库。
+3. Space 会自动构建镜像、监听 `$PORT`（默认 7860），构建完成后给一个 `*.hf.space` 网址发给同事即可。
+4. 同事打开网址 → 上传原音频 → 浏览器录音 → 比对，全部在网页完成，无需安装任何东西。
+
+### Render（备选）
+1. 登录 render.com → New Web Service → 连 GitHub 仓库。
+2. Build Command: `pip install -r requirements.txt`，Start Command: `python app.py`。
+3. Render 会自动注入 `PORT` 环境变量，部署后给固定网址。
+
+> 前端会在浏览器里把上传文件和录音都转成 WAV 再上传，后端只收 WAV，因此托管环境不需要额外音频解码依赖。
 
 ## 文件
 - `app.py`：Flask 后端（页面 + /compare 接口）

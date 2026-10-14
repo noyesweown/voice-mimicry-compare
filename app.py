@@ -59,4 +59,6 @@ def compare():
 
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5001, debug=True)
+    # 本地默认 5001；部署到 Hugging Face Spaces / Render 时读环境变量 PORT
+    port = int(os.environ.get("PORT", 5001))
+    app.run(host="0.0.0.0", port=port, debug=False)

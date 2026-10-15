@@ -114,17 +114,27 @@
 
   let session = null;
   let loading = null;
+  const MODEL_URL = './model/speaker_encoder_fp32.onnx';
+  const MODEL_SIZE = 35943287; // 字节数，用于校验下载完整性
 
-  // 初始化模型（首次调用时加载 wasm + onnx，约 48MB，之后走浏览器缓存）
+  // 初始化模型（首次调用时加载 wasm + onnx，约 62MB，之后走浏览器缓存）
+  // 强制 wasm 后端：避免 Safari 等浏览器自动选择 WebNN/WebGPU 路径（对动态输入模型有兼容问题）
   function init() {
     if (session) return Promise.resolve(session);
     if (loading) return loading;
     if (typeof ort === 'undefined') return Promise.reject(new Error('onnxruntime-web 未加载（ort.min.js）'));
     ort.env.wasm.numThreads = 1;            // 单线程，免 COOP/COEP（GitHub Pages 友好）
     ort.env.wasm.wasmPaths = './';          // 与页面同目录加载 wasm
-    loading = ort.InferenceSession.create('./model/speaker_encoder_fp32.onnx')
-      .then(s => { session = s; return s; })
-      .catch(e => { loading = null; throw e; });
+    loading = (async () => {
+      // 先自行 fetch 并校验，再从字节建会话：能把「缓存了 404/被截断」这类问题变成明确报错
+      const resp = await fetch(MODEL_URL);
+      if (!resp.ok) throw new Error('模型下载失败 HTTP ' + resp.status + '，请刷新重试');
+      const buf = await resp.arrayBuffer();
+      if (buf.byteLength !== MODEL_SIZE) {
+        throw new Error('模型文件不完整（收到 ' + buf.byteLength + '/' + MODEL_SIZE + ' 字节），请强制刷新（Cmd+Option+R）');
+      }
+      return ort.InferenceSession.create(buf, { executionProviders: ['wasm'] });
+    })().then(s => { session = s; return s; }).catch(e => { loading = null; throw e; });
     return loading;
   }
 

@@ -97,8 +97,8 @@
   </div>
 </div>
 
-<script src="ort.min.js"></script>
-<script src="embed.js?v=2"></script>
+<script src="ort.min.js?v=3"></script>
+<script src="embed.js?v=3"></script>
 <script>
   let origBuf = null;   // Float32 24k 单声道
   let mimicBuf = null;
@@ -205,7 +205,7 @@
     try {
       await Embed.init();
       modelReady = true;
-      modelEl.textContent = '声纹模型已就绪 ✓（全程本地计算）';
+      modelEl.textContent = '声纹模型已就绪 ✓ v3（全程本地计算）';
       refreshCompareBtn();
     } catch (e) {
       modelEl.textContent = '模型加载失败：' + e.message + '（请检查网络后刷新）';

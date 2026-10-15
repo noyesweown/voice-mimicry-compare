@@ -14,6 +14,8 @@
     background: var(--bg); color: var(--text); padding: 24px; }
   .wrap { max-width: 680px; margin: 0 auto; }
   h1 { font-size: 22px; margin: 0 0 4px; }
+  .brand { display: flex; align-items: center; gap: 12px; margin-bottom: 2px; }
+  .logo { width: 46px; height: 46px; object-fit: contain; flex: 0 0 auto; }
   .sub { color: var(--muted); font-size: 14px; margin-bottom: 20px; }
   .card { background: var(--card); border: 1px solid var(--border); border-radius: 14px;
     padding: 18px; margin-bottom: 16px; }
@@ -44,7 +46,10 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>语音模仿相似度比对</h1>
+  <div class="brand">
+    <img class="logo" src="logo.png" alt="logo">
+    <h1>语音模仿相似度比对</h1>
+  </div>
   <div class="sub">上传一段原音频，然后对着麦克风模仿它，看看你模仿得有多像。<br>
     全程在<b>你的浏览器本地</b>完成计算，不上传任何服务器。</div>
 

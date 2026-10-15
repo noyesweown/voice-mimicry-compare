@@ -49,9 +49,9 @@
     <h1>语音模仿相似度比对</h1>
   </div>
   <div class="sub">上传一段原音频，然后对着麦克风模仿它，看看你模仿得有多像。<br>
-    用 <b>声纹模型</b>（ECAPA-TDNN）在<b>你的浏览器本地</b>比对，跟说了什么内容无关，不上传任何服务器。</div>
+    用 <b>ECAPA-TDNN 声纹模型</b>（VoxCeleb 训练）在<b>你的浏览器本地</b>比对，不上传任何服务器。</div>
 
-  <div class="model-state" id="modelState">正在加载声纹模型…（首次约 48MB，之后走浏览器缓存）</div>
+  <div class="model-state" id="modelState">正在加载声纹模型…（首次约 33MB，之后走浏览器缓存）</div>
 
   <!-- 原音频 -->
   <div class="card">
@@ -92,13 +92,13 @@
   </div>
 
   <div class="hint">
-    说明：分数基于两段音频的「说话人声纹」做余弦相似度（浏览器本地实时计算），<b>跟说了什么内容无关</b>——<br>
-    同一人 / 极像的模仿 → 高分；不同人 → 低分；太安静或空白 → 分数会明显偏低。
+    说明：分数 = 两段音频声纹向量的余弦相似度（浏览器本地实时计算）。<br>
+    同一人 / 音色越接近 → 越高；不同人 → 低；<b>静音或非人声 → 接近 0</b>。
   </div>
 </div>
 
-<script src="ort.min.js?v=3"></script>
-<script src="embed.js?v=3"></script>
+<script src="ort.min.js?v=4"></script>
+<script src="embed.js?v=4"></script>
 <script>
   let origBuf = null;   // Float32 24k 单声道
   let mimicBuf = null;
@@ -205,7 +205,7 @@
     try {
       await Embed.init();
       modelReady = true;
-      modelEl.textContent = '声纹模型已就绪 ✓ v3（全程本地计算）';
+      modelEl.textContent = '声纹模型已就绪 ✓ v4（全程本地计算）';
       refreshCompareBtn();
     } catch (e) {
       modelEl.textContent = '模型加载失败：' + e.message + '（请检查网络后刷新）';

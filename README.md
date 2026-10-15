@@ -25,10 +25,11 @@ python app.py
 声纹模型必须跑在 Python 后端，所以需要一个能跑 Docker / Python 的托管：
 
 ### 方案 A：Render（免费，推荐）
-1. 登录 render.com → New Web Service → 连你的 GitHub 仓库（本仓库）。
-2. Runtime 选 **Docker**（用仓库里的 `Dockerfile`），或选 Python 并设 Build `pip install -r requirements.txt`、Start `python app.py`。
-3. Render 会自动注入 `PORT` 环境变量，部署后给固定网址发给同事。
-4. 免费版特性：15 分钟无人访问会休眠，首次访问需约 1 分钟冷启动；模型权重会在每次冷启动重新下载（已缓存到磁盘则更快）。
+1. 登录 render.com → 右上角 **New** → **Web Service** → 连你的 GitHub 仓库 `noyesweown/voice-mimicry-compare`。
+2. 在 "Runtime" 区域 Render 会自动检测到仓库里的 **`render.yaml`**，直接选它即可（无需手动填命令）；若手动建：Runtime 选 **Python**，Build Command `pip install -r requirements.txt`，Start Command `python app.py`。
+3. 点 **Create Web Service**，等构建完成（首次约 2–5 分钟，会装 tensorflow 等较重依赖）。
+4. 部署完成后页面顶部变绿，给一个 `https://voice-mimicry-compare.onrender.com` 固定网址 → 发给同事，他打开即可上传 + 录音 + 比对，零安装。
+5. 免费版特性：15 分钟无人访问会休眠，唤醒需约 1 分钟冷启动；首次请求会下载约 25MB 模型权重（之后缓存在磁盘更快）。
 
 ### 方案 B：Hugging Face Spaces（需付费计划）
 HF 免费版已不支持 Docker SDK，若要用 Spaces 需升级到付费计划，再选 Docker SDK 并连本仓库。

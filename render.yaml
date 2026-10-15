@@ -1,0 +1,13 @@
+# Render 部署描述文件（与 GitHub 仓库连接后自动读取）
+# 用法：Render → New → Web Service → 连 GitHub 仓库 → 选 "render.yaml" 即可，无需手动填命令。
+services:
+  - type: web
+    name: voice-mimicry-compare
+    runtime: python
+    plan: free
+    region: oregon          # 选离同事近的区；free 计划默认 oregon
+    branch: main
+    buildCommand: pip install -r requirements.txt
+    startCommand: python app.py
+    healthCheckPath: /ping
+    # 首次访问会自动下载约 25MB 的 resemblyzer 模型权重（冷启动后缓存在磁盘）

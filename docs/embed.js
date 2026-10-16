@@ -1,13 +1,13 @@
 // embed.js — 浏览器端「声纹相似度」（SpeechBrain ECAPA-TDNN，VoxCeleb 训练）
 // 依赖：ort.min.js（onnxruntime-web 1.19.2，全局 ort）
-// 模型：ecapa_int8.onnx（192 维声纹嵌入，int8 量化，21.5MB）
+// 模型：ecapa_fp16.onnx（192 维声纹嵌入，fp16 存储，41.9MB）
 // 预处理严格对齐官方 SpeechBrain：功率谱 -> fbank -> 10*log10 -> 80dB 截断 -> 逐句减均值
 // 全程本地计算，不上传服务器。
 (function (global) {
   'use strict';
 
   const SR = 16000, N_FFT = 400, WIN = 400, HOP = 160, N_BINS = 201, N_MELS = 80;
-  const MODEL_URL = './model/ecapa_fp32.onnx';
+  const MODEL_URL = './model/ecapa_fp16.onnx';
   const FBANK_URL = './fbank_201x80.bin';   // 官方滤波器矩阵 (201,80) float32
 
   let W = null;            // Float32Array(201*80)
@@ -15,10 +15,9 @@
   let loading = null;
 
   // ---- 预计算 DFT 核（N_FFT=400 不是 2 的幂，直接用矩阵法算功率谱）----
-  let COS = null, SIN = null;
-  function buildDFT() {
-    COS = new Float32Array(N_BINS * N_FFT);
-    SIN = new Float32Array(N_BINS * N_FFT);
+  const COS = new Float32Array(N_BINS * N_FFT);
+  const SIN = new Float32Array(N_BINS * N_FFT);
+  (function buildDFT() {
     for (let k = 0; k < N_BINS; k++) {
       for (let n = 0; n < N_FFT; n++) {
         const a = 2 * Math.PI * k * n / N_FFT;
@@ -26,8 +25,7 @@
         SIN[k * N_FFT + n] = Math.sin(a);
       }
     }
-  }
-  buildDFT();
+  })();
 
   // torch 风格 hann(periodic)
   const HANN = (function () {
@@ -53,36 +51,35 @@
     const T = Math.floor((padded.length - WIN) / HOP) + 1;
     if (T < 1) throw new Error('音频太短');
     const lin = new Float32Array(T * N_MELS);
-    const pow = new Float32Array(N_BINS);
+    const pw = new Float32Array(N_BINS);
 
     for (let t = 0; t < T; t++) {
       const off = t * HOP;
-      // 1) 功率谱
+      // 1) 功率谱（speechbrain spectral_magnitude 默认 power=1）
       for (let k = 0; k < N_BINS; k++) {
         let re = 0, im = 0;
         const base = k * N_FFT;
         for (let n = 0; n < N_FFT; n++) {
           const v = padded[off + n] * HANN[n];
           re += v * COS[base + n];
-          im -= v * SIN[base + n];
+        im -= v * SIN[base + n];
         }
-        pow[k] = re * re + im * im;
+        pw[k] = re * re + im * im;
       }
-      // 2) matmul(pow, W) -> (80,)
+      // 2) matmul(pw, W) -> (80,)
       for (let m = 0; m < N_MELS; m++) {
         let s = 0;
-        for (let k = 0; k < N_BINS; k++) s += pow[k] * W[k * N_MELS + m];
+        for (let k = 0; k < N_BINS; k++) s += pw[k] * W[k * N_MELS + m];
         lin[t * N_MELS + m] = s;
       }
     }
-    // 3) 10*log10，找全局最大值用于 80dB 截断
+    // 3) 10*log10 + 80dB 动态范围截断
     let gmax = -Infinity;
     for (let i = 0; i < lin.length; i++) {
       const db = 10 * Math.log10(Math.max(lin[i], 1e-10));
       lin[i] = db;
       if (db > gmax) gmax = db;
     }
-    // 4) 动态范围截断 + 逐句逐带减均值
     const floor = gmax - 80;
     const out = new Float32Array(T * N_MELS);
     const mean = new Float32Array(N_MELS);
@@ -102,11 +99,32 @@
   function cosine(a, b) {
     let d = 0, na = 0, nb = 0;
     for (let i = 0; i < a.length; i++) { d += a[i] * b[i]; na += a[i] * a[i]; nb += b[i] * b[i]; }
-    if (na === 0 || nb === 0) return 0;
-    return d / (Math.sqrt(na) * Math.sqrt(nb));
+    return (na === 0 || nb === 0) ? 0 : d / (Math.sqrt(na) * Math.sqrt(nb));
   }
 
-  async function init() {
+  // 带进度地下载模型（94MB 在慢网下可能很久，必须让用户看到进度）
+  async function fetchWithProgress(url, onProgress) {
+    const resp = await fetch(url);
+    if (!resp.ok) throw new Error('模型下载失败 HTTP ' + resp.status + '，请检查网络后刷新');
+    if (!resp.body || !resp.body.getReader) return resp.arrayBuffer();
+    const total = parseInt(resp.headers.get('Content-Length') || '0', 10);
+    const reader = resp.body.getReader();
+    const chunks = [];
+    let received = 0;
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      chunks.push(value);
+      received += value.length;
+      if (onProgress) onProgress(total ? received / total : -1, received);
+    }
+    const buf = new Uint8Array(received);
+    let pos = 0;
+    for (const c of chunks) { buf.set(c, pos); pos += c.length; }
+    return buf.buffer;
+  }
+
+  async function init(onProgress) {
     if (session) return session;
     if (loading) return loading;
     if (typeof ort === 'undefined') throw new Error('onnxruntime-web 未加载（ort.min.js）');
@@ -114,12 +132,11 @@
     ort.env.wasm.wasmPaths = './';   // wasm 与页面同目录
     loading = (async () => {
       if (!W) {
-        const r = await fetch(FBANK_URL);
-        if (!r.ok) throw new Error('滤波器矩阵加载失败 HTTP ' + r.status);
-        const b = await r.arrayBuffer();
+        const b = await fetchWithProgress(FBANK_URL);
         W = new Float32Array(b);
       }
-      return ort.InferenceSession.create(MODEL_URL, { executionProviders: ['wasm'] });
+      const buf = await fetchWithProgress(MODEL_URL, onProgress);
+      return ort.InferenceSession.create(buf, { executionProviders: ['wasm'] });
     })().then(s => { session = s; return s; }).catch(e => { loading = null; throw e; });
     return loading;
   }
@@ -155,7 +172,7 @@
     return out;
   }
 
-  const api = { init, embed, compare, toMono, cosine, computeFeatures: computeFeatures, SR };
+  const api = { init, embed, compare, toMono, cosine, computeFeatures, SR };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   if (global) global.Embed = api;
 })(typeof window !== 'undefined' ? window : (typeof globalThis !== 'undefined' ? globalThis : this));

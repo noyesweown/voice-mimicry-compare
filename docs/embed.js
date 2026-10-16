@@ -102,7 +102,8 @@
     return (na === 0 || nb === 0) ? 0 : d / (Math.sqrt(na) * Math.sqrt(nb));
   }
 
-  // 带进度地下载模型（94MB 在慢网下可能很久，必须让用户看到进度）
+  // 带进度地下载模型（慢网下可能很久，必须让用户看到进度）
+  // onProgress(ratio, receivedBytes)：ratio 为 0..1（无 Content-Length 时为 -1）
   async function fetchWithProgress(url, onProgress) {
     const resp = await fetch(url);
     if (!resp.ok) throw new Error('模型下载失败 HTTP ' + resp.status + '，请检查网络后刷新');
@@ -116,8 +117,9 @@
       if (done) break;
       chunks.push(value);
       received += value.length;
-      if (onProgress) onProgress(total ? received / total : -1, received);
+      if (onProgress) onProgress(total > 0 ? Math.min(1, received / total) : -1, received);
     }
+    if (onProgress) onProgress(1, received);
     const buf = new Uint8Array(received);
     let pos = 0;
     for (const c of chunks) { buf.set(c, pos); pos += c.length; }

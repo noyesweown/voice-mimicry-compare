@@ -97,8 +97,8 @@
   </div>
 </div>
 
-<script src="ort.min.js?v=5"></script>
-<script src="embed.js?v=5"></script>
+<script src="ort.min.js?v=6"></script>
+<script src="embed.js?v=6"></script>
 <script>
   let origBuf = null;   // Float32 24k 单声道
   let mimicBuf = null;
@@ -203,11 +203,17 @@
   // ---- 启动模型加载 ----
   (async function boot() {
     try {
-      await Embed.init(p => {
-        if (p >= 0) modelEl.textContent = "正在加载声纹模型… " + Math.round(p * 100) + "%（首次约 53MB）";
+      await Embed.init((p, bytes) => {
+        if (p < 0) {
+          modelEl.textContent = "正在加载声纹模型… 已下载 " + (bytes / 1048576).toFixed(1) + "MB";
+        } else if (p < 1) {
+          modelEl.textContent = "正在加载声纹模型… " + Math.min(99, Math.round(p * 100)) + "%";
+        } else {
+          modelEl.textContent = "下载完成，正在初始化模型…（几秒钟）";
+        }
       });
       modelReady = true;
-      modelEl.textContent = '声纹模型已就绪 ✓ v5（全程本地计算）';
+      modelEl.textContent = '声纹模型已就绪 ✓ v6（全程本地计算）';
       refreshCompareBtn();
     } catch (e) {
       modelEl.textContent = '模型加载失败：' + e.message + '（请检查网络后刷新）';
